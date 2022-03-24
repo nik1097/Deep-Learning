@@ -17,6 +17,7 @@ import sys
 import os
 import json
 import re
+import pickle
 from torch.utils.data import DataLoader, Dataset
 
 
@@ -24,42 +25,36 @@ from torch.utils.data import DataLoader, Dataset
 
 # In[2]:
 
+def data_preprocess():
+    filepath = '/scratch1/nsuresh/DL/'
+    with open(filepath + 'training_label.json', 'r') as f:
+        file = json.load(f)
 
-filepath = '/scratch1/nsuresh/DL/'
-with open(filepath + 'training_label.json', 'r') as f:
-    file = json.load(f)
+    word_count = {}
+    for d in file:
+        for s in d['caption']:
+            word_sentence = re.sub('[.!,;?]]', ' ', s).split()
+            for word in word_sentence:
+                word = word.replace('.', '') if '.' in word else word
+                if word in word_count:
+                    word_count[word] += 1
+                else:
+                    word_count[word] = 1
 
-word_count = {}
-for d in file:
-    for s in d['caption']:
-        word_sentence = re.sub('[.!,;?]]', ' ', s).split()
-        for word in word_sentence:
-            word = word.replace('.', '') if '.' in word else word
-            if word in word_count:
-                word_count[word] += 1
-            else:
-                word_count[word] = 1
+    word_dict = {}
+    for word in word_count:
+        if word_count[word] > 10:
+            word_dict[word] = word_count[word]
+    useful_tokens = [('<PAD>', 0), ('<SOS>', 1), ('<EOS>', 2), ('<UNK>', 3)]
+    i2w = {i + len(useful_tokens): w for i, w in enumerate(word_dict)}
+    w2i = {w: i + len(useful_tokens) for i, w in enumerate(word_dict)}
+    for token, index in useful_tokens:
+        i2w[index] = token
+        w2i[token] = index
+        
+    return i2w, w2i, word_dict
 
-
-# In[3]:
-
-
-word_dict = {}
-for word in word_count:
-    if word_count[word] > 10:
-        word_dict[word] = word_count[word]
-useful_tokens = [('<PAD>', 0), ('<SOS>', 1), ('<EOS>', 2), ('<UNK>', 3)]
-i2w = {i + len(useful_tokens): w for i, w in enumerate(word_dict)}
-w2i = {w: i + len(useful_tokens) for i, w in enumerate(word_dict)}
-for token, index in useful_tokens:
-    i2w[index] = token
-    w2i[token] = index
-
-
-# In[4]:
-
-
-def s_split(sentence):
+def s_split(sentence, word_dict, w2i):
     sentence = re.sub(r'[.!,;?]', ' ', sentence).split()
     for i in range(len(sentence)):
         if sentence[i] not in word_dict:
@@ -74,14 +69,14 @@ def s_split(sentence):
 # In[5]:
 
 
-def annotate(label_file):
-    label_json = filepath + label_file
+def annotate(label_file, word_dict, w2i):
+    label_json = '/scratch1/nsuresh/DL/' + label_file
     annotated_caption = []
     with open(label_json, 'r') as f:
         label = json.load(f)
     for d in label:
         for s in d['caption']:
-            s = s_split(s)
+            s = s_split(s, word_dict, w2i)
             annotated_caption.append((d['id'], s))
     return annotated_caption
 
@@ -91,7 +86,7 @@ def annotate(label_file):
 
 def avi(files_dir):
     avi_data = {}
-    training_feats = filepath + files_dir
+    training_feats = '/scratch1/nsuresh/DL/' + files_dir
     files = os.listdir(training_feats)
     for file in files:
         value = np.load(os.path.join(training_feats, file))
@@ -119,11 +114,14 @@ def minibatch(data):
 
 
 class training_data(Dataset):
-    def __init__(self):
+    def __init__(self, label_file, files_dir, word_dict, w2i):
         self.label_file = label_file
         self.files_dir = files_dir
+        self.word_dict = word_dict
         self.avi = avi(label_file)
-        self.data_pair = annotate(files_dir)
+        self.w2i = w2i
+        self.data_pair = annotate(files_dir, word_dict, w2i)
+        
     def __len__(self):
         return len(self.data_pair)
     def __getitem__(self, idx):
@@ -149,21 +147,6 @@ class test_data(Dataset):
         return len(self.avi)
     def __getitem__(self, idx):
         return self.avi[idx]
-
-
-# In[10]:
-
-
-label_file = '/training_data/feat'
-files_dir = 'training_label.json'
-train_dataset = training_data()
-train_dataloader = DataLoader(dataset = train_dataset, batch_size=128, shuffle=True, num_workers=8, collate_fn=minibatch)
-
-label_file = '/testing_data/feat'
-files_dir = 'testing_label.json'
-test_dataset = training_data()
-test_dataloader = DataLoader(dataset = test_dataset, batch_size=128, shuffle=True, num_workers=8, collate_fn=minibatch)
-
 
 # ## Models
 
@@ -229,12 +212,11 @@ class decoderRNN(nn.Module):
         super(decoderRNN, self).__init__()
 
         self.hidden_size = 512
-        self.output_size = len(i2w) + 4 
-        self.vocab_size = len(i2w) + 4
-        self.word_dim = 1024
+        self.output_size = output_size
+        self.vocab_size = vocab_size
+        self.word_dim = word_dim
 
-        # layers
-        self.embedding = nn.Embedding(len(i2w) + 4, 1024)
+        self.embedding = nn.Embedding(output_size, 1024)
         self.dropout = nn.Dropout(0.3)
         self.gru = nn.GRU(hidden_size+word_dim, hidden_size, batch_first=True)
         self.attention = attention(hidden_size)
@@ -275,7 +257,7 @@ class decoderRNN(nn.Module):
         _, batch_size, _ = encoder_last_hidden_state.size()
         decoder_current_hidden_state = None if encoder_last_hidden_state is None else encoder_last_hidden_state
         decoder_current_input_word = Variable(torch.ones(batch_size, 1)).long()  # <SOS> (batch x word index)
-        decoder_current_input_word = decoder_current_input_word.cuda() if torch.cuda.is_available() else decoder_current_input_word
+        decoder_current_input_word = decoder_current_input_word.cuda()
         seq_logProb = []
         seq_predictions = []
         assumption_seq_len = 28
@@ -319,9 +301,7 @@ class MODELS(nn.Module):
 
 # In[2]:
 
-
-loss_fn = nn.CrossEntropyLoss()
-def calculate_loss(x, y, lengths):
+def calculate_loss(loss_fn, x, y, lengths):
     batch_size = len(x)
     predict_cat = None
     groundT_cat = None
@@ -366,12 +346,9 @@ def minibatch(data):
 # In[5]:
 
 
-def train(model, epoch, train_loader = train_dataloader):
+def train(model, epoch, loss_fn, parameters, optimizer, train_loader):
     model.train()
     print(epoch)
-    model = model.cuda()
-    parameters = model.parameters()
-    optimizer = optim.Adam(parameters, lr=0.001)
     
     for batch_idx, batch in enumerate(train_loader):
         avi_feats, ground_truths, lengths = batch
@@ -382,7 +359,7 @@ def train(model, epoch, train_loader = train_dataloader):
         seq_logProb, seq_predictions = model(avi_feats, target_sentences=ground_truths, mode='train', tr_steps=epoch)
             
         ground_truths = ground_truths[:, 1:]  
-        loss = calculate_loss(seq_logProb, ground_truths, lengths)
+        loss = calculate_loss(loss_fn, seq_logProb, ground_truths, lengths)
         loss.backward()
         optimizer.step()
 
@@ -393,7 +370,7 @@ def train(model, epoch, train_loader = train_dataloader):
 # In[ ]:
 
 
-def test(test_loader = test_dataloader):
+def test(test_loader, model, i2w):
     model.eval()
     ss = []
     for batch_idx, batch in enumerate(test_loader):
@@ -403,7 +380,8 @@ def test(test_loader = test_dataloader):
 
         seq_logProb, seq_predictions = model(avi_feats, mode='inference')
         test_predictions = seq_predictions
-        result = [[i2w[x] if i2w[x] != '<UNK>' else 'something' for x in s] for s in test_predictions]
+        
+        result = [[i2w[x.item()] if i2w[x.item()] != '<UNK>' else 'something' for x in s] for s in test_predictions]
         result = [' '.join(s).split('<EOS>')[0] for s in result]
         rr = zip(id, result)
         for r in rr:
@@ -413,19 +391,31 @@ def test(test_loader = test_dataloader):
 
 # In[7]:
 
-
-epochs_n = 10
-ModelSaveLoc = 'SavedModel'
-if not os.path.exists(ModelSaveLoc):
-    os.mkdir(ModelSaveLoc)
-
-encoder = encoderRNN()
-decoder = decoderRNN(512, len(i2w) +4, len(i2w) +4, 1024, 0.3)
-model = MODELS(encoder=encoder, decoder=decoder)
-
-for epoch in range(epochs_n):
-    train(model,epoch+1)
+def main():
+    i2w, w2i, word_dict = data_preprocess()
+    with open('i2w.pickle', 'wb') as handle:
+        pickle.dump(i2w, handle, protocol = pickle.HIGHEST_PROTOCOL)
+    label_file = '/training_data/feat'
+    files_dir = 'training_label.json'
+    train_dataset = training_data(label_file, files_dir, word_dict, w2i)
+    train_dataloader = DataLoader(dataset = train_dataset, batch_size=128, shuffle=True, num_workers=8, collate_fn=minibatch)
     
-torch.save(model, "{}/{}.h5".format(ModelSaveLoc, 'model0'))
-print("Training finished {}  elapsed time: {: .3f} seconds. \n".format('test', end-start))
+    epochs_n = 100
 
+    encoder = encoderRNN()
+    decoder = decoderRNN(512, len(i2w) +4, len(i2w) +4, 1024, 0.3)
+    model = MODELS(encoder=encoder, decoder=decoder)
+    
+    model = model.cuda()
+    loss_fn = nn.CrossEntropyLoss()
+    parameters = model.parameters()
+    optimizer = optim.Adam(parameters, lr=0.001)
+    
+    for epoch in range(epochs_n):
+        train(model, epoch+1, loss_fn, parameters, optimizer, train_dataloader) 
+
+    torch.save(model, "{}/{}.h5".format('SavedModel', 'model0'))
+    print("Training finished")
+    
+if __name__ == "__main__":
+    main()
