@@ -43,7 +43,7 @@ def data_preprocess():
 
     word_dict = {}
     for word in word_count:
-        if word_count[word] > 10:
+        if word_count[word] > 4:
             word_dict[word] = word_count[word]
     useful_tokens = [('<PAD>', 0), ('<SOS>', 1), ('<EOS>', 2), ('<UNK>', 3)]
     i2w = {i + len(useful_tokens): w for i, w in enumerate(word_dict)}
@@ -124,6 +124,7 @@ class training_data(Dataset):
         
     def __len__(self):
         return len(self.data_pair)
+    
     def __getitem__(self, idx):
         assert (idx < self.__len__())
         avi_file_name, sentence = self.data_pair[idx]
@@ -256,7 +257,7 @@ class decoderRNN(nn.Module):
     def infer(self, encoder_last_hidden_state, encoder_output):
         _, batch_size, _ = encoder_last_hidden_state.size()
         decoder_current_hidden_state = None if encoder_last_hidden_state is None else encoder_last_hidden_state
-        decoder_current_input_word = Variable(torch.ones(batch_size, 1)).long()  # <SOS> (batch x word index)
+        decoder_current_input_word = Variable(torch.ones(batch_size, 1)).long()
         decoder_current_input_word = decoder_current_input_word.cuda()
         seq_logProb = []
         seq_predictions = []
@@ -356,17 +357,15 @@ def train(model, epoch, loss_fn, parameters, optimizer, train_loader):
         avi_feats, ground_truths = Variable(avi_feats), Variable(ground_truths)
         
         optimizer.zero_grad()
-        seq_logProb, seq_predictions = model(avi_feats, target_sentences=ground_truths, mode='train', tr_steps=epoch)
-            
+        seq_logProb, seq_predictions = model(avi_feats, target_sentences = ground_truths, mode = 'train', tr_steps = epoch)
         ground_truths = ground_truths[:, 1:]  
         loss = calculate_loss(loss_fn, seq_logProb, ground_truths, lengths)
+        
         loss.backward()
         optimizer.step()
 
     loss = loss.item()
     print(loss)
-
-
 # In[ ]:
 
 
@@ -409,7 +408,7 @@ def main():
     model = model.cuda()
     loss_fn = nn.CrossEntropyLoss()
     parameters = model.parameters()
-    optimizer = optim.Adam(parameters, lr=0.001)
+    optimizer = optim.Adam(parameters, lr=0.0001)
     
     for epoch in range(epochs_n):
         train(model, epoch+1, loss_fn, parameters, optimizer, train_dataloader) 
