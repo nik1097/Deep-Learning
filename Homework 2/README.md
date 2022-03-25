@@ -21,6 +21,7 @@ Tokens
 - BOS: Begin of a sentence, sign to generate output sentence.
 - EOS: End of a sentence, sign to end output sentence.
 - UNK: Token for unknown word in dictionary.
+
 All the below data structures are stored as python dictionaries.
 - word_dict
   Contains the number of occurrences of a word in the training label file by generating a vocabulary. Any word having a frequency less than 4 is ignored.
