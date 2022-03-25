@@ -17,10 +17,10 @@ The dataset has 1450 video for training and 100 for testing. We also have a trai
 ### Program Data Structures
 The basic requirement for the seq2seq model is a dictionary as prescribed in the slides. Below is a basic mapping for the words and vice-versa.
 Tokens
-- <PAD>: Pad the sentence to same length.
-- <BOS>: Begin of a sentence, sign to generate output sentence.
-- <EOS>: End of a sentence, sign to end output sentence.
-- <UNK>: Token for unknown word in dictionary.
+- PAD: Pad the sentence to same length.
+- BOS: Begin of a sentence, sign to generate output sentence.
+- EOS: End of a sentence, sign to end output sentence.
+- UNK: Token for unknown word in dictionary.
 All the below data structures are stored as python dictionaries.
 - word_dict
   Contains the number of occurrences of a word in the training label file by generating a vocabulary. Any word having a frequency less than 4 is ignored.
