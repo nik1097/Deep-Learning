@@ -1,3 +1,4 @@
+# Homework 1 
 - [Homework 1](https://github.com/nik1097/Deep-Learning/tree/master/Homework%201) contains python code that demonstrate some of the fundamental concepts in Deep Learning.
   - [Simulating Function](https://github.com/nik1097/Deep-Learning/blob/master/Homework%201/HW1%20simulate%20function.ipynb)
     Simulated a sin function and created neural network models with multiple layers.
