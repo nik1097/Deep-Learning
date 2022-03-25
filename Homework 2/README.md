@@ -11,7 +11,7 @@ The above is achieved by Recurrent Neural Networks.
 • numpy
 • pandas
 • pickle
-Note
+
 The training dataset is stored in the scratch location on Palmetto as denoted in the code. The location of the model and the train/test labels have been hard coded into the program. The user has the option of providing the file path for testing files in the .sh file along with the name of output file. The output file will be available in the local directory of code files. The compute file contains the training and the model definition code.
 
 ### Dataset
