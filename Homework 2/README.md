@@ -11,6 +11,9 @@ The above is achieved by Recurrent Neural Networks.
 • numpy
 • pandas
 • pickle
+Note
+The training dataset is stored in the scratch location on Palmetto as denoted in the code. The location of the model and the train/test labels have been hard coded into the program. The user has the option of providing the file path for testing files in the .sh file along with the name of output file. The output file will be available in the local directory of code files. The compute file contains the training and the model definition code.
+
 ### Dataset
 The same dataset provided by the professor has been utilised to train and test the model. 
 The dataset has 1450 video for training and 100 for testing. We also have a training and testing label .json files that presents us with labels to train our model.
@@ -53,5 +56,3 @@ odds while we are training the model.
 - Vocab Size = n > 4
 The loss of the model in last epoch is 1.4123
 #### The bleu score of the model is at 0.699 for the test data provided for evaluation.
-
-Note: The compute file contains the training and the model definition code.
